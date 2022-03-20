@@ -33,7 +33,7 @@ type `quit` in bluetoothctl shell
 Now run `install.sh`
 
 ```bash
-<python version> /usr/local/lib/<python version>/dist-packages/evdev/evtest.py
+python3 /usr/local/lib/<your python3 version>/dist-packages/evdev/evtest.py
 ```
 
 This script will help you map keys for your controller, now write your script
