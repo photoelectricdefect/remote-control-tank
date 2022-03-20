@@ -32,8 +32,14 @@ type `quit` in bluetoothctl shell
 
 Now run `install.sh`
 
+## Mapping Controller Keys
+
 ```bash
 python3 /usr/local/lib/<your python3 version>/dist-packages/evdev/evtest.py
 ```
 
-This script will help you map keys for your controller, now write your script
+Once paired and connected, this script will help you map keys for your controller
+
+## Service
+
+`install.sh` also installs `xbox_relay.service` on your system so that `xbox_relay.py` runs on system boot, but before running it, you should change the `WorkingDirectory` field to point to your project directory

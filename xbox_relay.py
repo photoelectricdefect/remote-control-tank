@@ -78,6 +78,7 @@ class xbox_relay:
                     response = json.loads(self.serial_port.readline())
 
             except serial.SerialException as ex:
+                print_ex(ex)
                 serial_error=True
             except Exception as ex:
                 print_ex(ex)
@@ -122,7 +123,6 @@ class xbox_relay:
                                 
                                 with self.motion_state_lock:
                                     self.motion_state["motion_state"]["l"]=normalized_brake
-
             except Exception as ex:
                 print_ex(ex)
                 time.sleep(self.DELAY_RESTART)
