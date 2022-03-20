@@ -1,8 +1,8 @@
-#RPI XBOX Controller Relay
+# RPI XBOX Controller Relay
 
 https://python-evdev.readthedocs.io/en/latest/
 
-##Instructions
+## Instructions
 
 Open terminal
 
