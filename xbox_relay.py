@@ -129,8 +129,6 @@ class xbox_relay:
 
     def get_esp32_port(self):
         for port in serial.tools.list_ports.comports():
-            serial_port=None
-
             try:
                 serial_port=serial.Serial(port.device,self.microcontroller_baud_rate)
 
