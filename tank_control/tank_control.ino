@@ -113,8 +113,6 @@ void loop() {
         double abs_l=abs(l);
         double abs_r=abs(r);
 
-        StaticJsonDocument<128> response_json;
-
         set_left_motor_stationary();
         set_right_motor_stationary();
 
@@ -171,14 +169,13 @@ void loop() {
         ledcWrite(PWM_CHANNEL_MOTOR_LEFT, abs_l*255);
         ledcWrite(PWM_CHANNEL_MOTOR_RIGHT, abs_r*255);
 
-//        StaticJsonDocument<128> response_json;
+        StaticJsonDocument<128> response_json;
         response_json["error"]="0";
         response_json["abs_l"]=abs_l;
         response_json["abs_r"]=abs_r;
         String output;
         serializeJson(response_json, output);  
         Serial.print(output+"\n");  
-//        Serial.print(input+"\n");  
       }
       }
       

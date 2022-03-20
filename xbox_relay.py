@@ -76,7 +76,6 @@ class xbox_relay:
 
                     self.serial_port.write((motion_state_str+"\n").encode())
                     response = json.loads(self.serial_port.readline())
-                    print(response)
 
             except serial.SerialException as ex:
                 serial_error=True
@@ -140,7 +139,6 @@ class xbox_relay:
                         "id":""
                     }
 
-                    print(port.device)
                     serial_port.write_timeout=self.SERIAL_TIMEOUT
                     serial_port.write((json.dumps(input)+"\n").encode())
                     serial_port.timeout=self.SERIAL_TIMEOUT
@@ -161,7 +159,7 @@ def print_ex(ex):
     print(''.join(traceback.format_exception(etype=type(ex), value=ex, tb=ex.__traceback__)))
 
 def display_usage():
-    print("\nUsage: "+os.path.basename(__file__)+" [XBOX Name] [Controller Baud Rate]\n")
+    print("\nUsage: "+os.path.basename(__file__)+" [XBOX Name] [Microcontroller Baud Rate]\n")
 
 if __name__ == "__main__":
     argc=len(sys.argv)
