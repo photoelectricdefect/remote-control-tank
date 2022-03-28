@@ -4,6 +4,8 @@
 import os
 import sys
 import time
+from multiprocessing import Process
+import atexit
 import threading
 from evdev import InputDevice, categorize, ecodes, list_devices,util
 import json
@@ -14,12 +16,10 @@ import traceback
 class xbox_relay:
     BTN_GAS = 9
     BTN_BRAKE = 10
-    DELAY_RESTART=3.1
-    DELAY_DEVICE_NOT_FOUND=2.1
+    DELAY_RESTART_NOTIFY=3
+    DELAY_RESTART_COLLECT=3
+    TIMEOUT_KILL=5
     SERIAL_TIMEOUT=5
-
-    collecting=True
-    notifying=True
 
     motion_state_lock = threading.Lock()
 
@@ -39,22 +39,27 @@ class xbox_relay:
         self.serial_port.write_timeout = self.SERIAL_TIMEOUT
 
     def start(self):
-        try:
-            self.thread_notify = threading.Thread(target = self.notify)
-            self.thread_notify.daemon=True
-            self.thread_notify.start()
-            self.thread_collect = threading.Thread(target = self.collect_events)
-            self.thread_collect.daemon=True
-            self.thread_collect.start()
+        errcode=0
 
-            self.thread_notify.join()
-            self.thread_collect.join()
+        try:
+            self.process_notify = Process(target=self.notify, name="xbox_relay_notify")
+            self.process_notify.start()
+            self.process_collect = Process(target=self.collect_events, name="xbox_relay_collect")
+            self.process_collect.start()
+            self.process_notify.join()
+            self.process_collect.join()
         except KeyboardInterrupt as ex:
-            print_ex(ex)            
-            sys.exit(1)
+            errcode=0
+        except Exception as ex:
+            print_ex(ex)
+            errcode=1
+        finally:
+            self.process_notify.terminate()
+            self.process_collect.terminate()
+            sys.exit(errcode)
 
     def notify(self):
-        while self.notifying:
+        while True:
             serial_error=False
 
             try:
@@ -62,7 +67,7 @@ class xbox_relay:
                     microcontroller_port=self.get_esp32_port()
 
                     if microcontroller_port is None:
-                        time.sleep(self.DELAY_RESTART)
+                        time.sleep(self.DELAY_RESTART_NOTIFY)
                         continue
 
                     self.serial_port.port = microcontroller_port
@@ -76,25 +81,26 @@ class xbox_relay:
 
                     self.serial_port.write((motion_state_str+"\n").encode())
                     response = json.loads(self.serial_port.readline())
-
+                    print(response)
             except serial.SerialException as ex:
                 print_ex(ex)
                 serial_error=True
             except Exception as ex:
                 print_ex(ex)
-                time.sleep(self.DELAY_RESTART)
+                time.sleep(self.DELAY_RESTART_NOTIFY)
             finally:
                 if serial_error:
                     self.serial_port.close()
+                    time.sleep(self.DELAY_RESTART_NOTIFY)
 
     def collect_events(self):
-        while self.collecting:
+        while True:
             try:
                 devices = [InputDevice(path) for path in list_devices()]
                 device = next((x for x in devices if x.name==self.xbox_name), None)
 
                 if device is None:
-                    time.sleep(self.DELAY_DEVICE_NOT_FOUND)
+                    time.sleep(self.DELAY_RESTART_COLLECT)
                     continue
 
                 capabilities=device.capabilities(verbose=True)
@@ -111,7 +117,10 @@ class xbox_relay:
                     abs_gas_max=abs_info_gas[1].max
                     abs_brake_max=abs_info_brake[1].max
 
+                    print("a")
                     for event in gamepad.read_loop():
+                        print("b")
+
                         if event.type == ecodes.EV_ABS:
                             if event.code == self.BTN_GAS:
                                 normalized_gas=event.value/abs_gas_max
@@ -125,7 +134,7 @@ class xbox_relay:
                                     self.motion_state["motion_state"]["l"]=normalized_brake
             except Exception as ex:
                 print_ex(ex)
-                time.sleep(self.DELAY_RESTART)
+                time.sleep(self.DELAY_RESTART_COLLECT)
 
     def get_esp32_port(self):
         for port in serial.tools.list_ports.comports():
