@@ -14,19 +14,19 @@ import traceback
 import RPI.GPIO as GPIO
 
 class tank_controller:
-    PIN_LEFT_MOTOR_PWM = 25;
-    PIN_RIGHT_MOTOR_PWM = 26;
+    PIN_LEFT_MOTOR_PWM = 25
+    PIN_RIGHT_MOTOR_PWM = 26
 
-    PIN_LEFT_MOTOR_A = 14;
-    PIN_LEFT_MOTOR_B = 12;
-    PIN_RIGHT_MOTOR_A = 33;
-    PIN_RIGHT_MOTOR_B = 32;
+    PIN_LEFT_MOTOR_A = 14
+    PIN_LEFT_MOTOR_B = 12
+    PIN_RIGHT_MOTOR_A = 33
+    PIN_RIGHT_MOTOR_B = 32
 
-    PWM_CHANNEL_MOTOR_LEFT = 0; 
-    PWM_CHANNEL_MOTOR_RIGHT = 1; 
+    PWM_CHANNEL_MOTOR_LEFT = 0 
+    PWM_CHANNEL_MOTOR_RIGHT = 1 
 
-    PWM_FREQUENCY = 5000; 
-    PWM_RESOLUTION = 8;
+    PWM_FREQUENCY = 5000 
+    PWM_RESOLUTION = 8
 
     MIN_GAS=5e-2
 
@@ -50,7 +50,21 @@ class tank_controller:
         errcode=0
 
         try:
-            init_GPIO()
+            GPIO.setmode(GPIO.BOARD)
+        
+            GPIO.setup(self.PIN_LEFT_MOTOR_A, GPIO.OUT)
+            GPIO.setup(self.PIN_LEFT_MOTOR_B, GPIO.OUT)
+            GPIO.setup(self.PIN_RIGHT_MOTOR_A, GPIO.OUT)
+            GPIO.setup(self.PIN_RIGHT_MOTOR_B, GPIO.OUT)
+            
+            set_left_motor_stationary()
+            set_right_motor_stationary()
+
+            self.pwm_left=GPIO.PWM(self.PIN_LEFT_MOTOR_PWM, self.PWM_FREQUENCY)
+            self.pwm_left.start(0)
+            self.pwm_right=GPIO.PWM(self.PIN_RIGHT_MOTOR_PWM, self.PWM_FREQUENCY)
+            self.pwm_right.start(0)
+
             self.process_event_loop = Process(target=self.collect_events, name="tank_control_event_loop")
             self.process_event_loop.start()
             self.process_control_loop = Process(target=self.control_loop, name="tank_control_loop")
@@ -67,22 +81,6 @@ class tank_controller:
             self.process_control_loop.terminate()
             GPIO.cleanup()
             sys.exit(errcode)
-
-    def init_GPIO(self):
-        GPIO.setmode(GPIO.BOARD)
-        
-        GPIO.setup(self.PIN_LEFT_MOTOR_A, GPIO.OUT)
-        GPIO.setup(self.PIN_LEFT_MOTOR_B, GPIO.OUT)
-        GPIO.setup(self.PIN_RIGHT_MOTOR_A, GPIO.OUT)
-        GPIO.setup(self.PIN_RIGHT_MOTOR_B, GPIO.OUT)
-        
-        set_left_motor_stationary()
-        set_right_motor_stationary()
-
-        self.pwm_left=GPIO.PWM(self.PIN_LEFT_MOTOR_PWM, self.PWM_FREQUENCY)
-        self.pwm_left.start(0)
-        self.pwm_right=GPIO.PWM(self.PIN_RIGHT_MOTOR_PWM, self.PWM_FREQUENCY)
-        self.pwm_right.start(0)
 
     def control_loop(self):
         while True:
