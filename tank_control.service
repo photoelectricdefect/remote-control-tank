@@ -8,8 +8,8 @@ Type=simple
 Restart=always
 RestartSec=1
 User=pi
-WorkingDirectory=/home/pi/projects/remote-control-tank
-ExecStart=/usr/bin/python3 "xbox_relay.py" "Xbox Wireless Controller" 9600
+WorkingDirectory=/home/robot/projects/remote-control-tank
+ExecStart=/usr/bin/python3 "tank_control.py" "Xbox Wireless Controller"
 
 [Install]
 WantedBy=multi-user.target
