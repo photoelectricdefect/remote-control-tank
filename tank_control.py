@@ -12,6 +12,7 @@ import serial
 import serial.tools.list_ports
 import traceback
 import RPI.GPIO as GPIO
+import numpy as np
 
 class tank_controller:
     PIN_LEFT_MOTOR_PWM = 25
@@ -35,6 +36,7 @@ class tank_controller:
 
     DELAY_RESTART_CONTROL_LOOP=3
     DELAY_RESTART_EVENT_LOOP=3
+    DELAY_CONTROL_LOOP=0.05
 
     motion_state_lock = threading.Lock()
 
@@ -85,8 +87,10 @@ class tank_controller:
     def control_loop(self):
         while True:
             try:
-                abs_left=abs(self.motion_state["left"])
-                abs_right=abs(self.motion_state["right"])
+                left=self.motion_state["left"]
+                right=self.motion_state["right"]
+                abs_left=abs(left)
+                abs_right=abs(right)
 
                 set_left_motor_stationary()
                 set_right_motor_stationary()
@@ -98,7 +102,7 @@ class tank_controller:
                     max_gas=max(abs_left,abs_right)
 
                     if max_gas==abs_left:
-                        direction=get_sign_dbl(l)
+                        direction=np.sign(left)
                         abs_right=abs_left
 
                         if direction>0: 
@@ -108,7 +112,7 @@ class tank_controller:
                             set_left_motor_counter_clockwise()
                             set_right_motor_clockwise()
                     else:
-                        direction=get_sign_dbl(r)
+                        direction=np.sign(right)
                         abs_left=abs_right
 
                         if direction>0:
@@ -119,19 +123,19 @@ class tank_controller:
                             set_left_motor_clockwise()
                             set_right_motor_counter_clockwise()
                 else:
-                    if(l>0):
+                    if(left>0):
                         set_left_motor_counter_clockwise()
                     else:
                         set_left_motor_clockwise()
                     
-                    if(r>0):
+                    if(right>0):
                         set_right_motor_counter_clockwise()                      
                     else:
                         set_right_motor_clockwise()
           
                 self.pwm_left.ChangeDutyCycle(abs_left)
                 self.pwm_right.ChangeDutyCycle(abs_right)
-                sleep(0.01)
+                sleep(self.DELAY_CONTROL_LOOP)
             except Exception as ex:
                 print_ex(ex)
                 time.sleep(self.DELAY_RESTART_CONTROL_LOOP)
