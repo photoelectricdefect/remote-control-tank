@@ -63,7 +63,8 @@ class tank_controller:
             print_ex(ex)
             errcode=1
         finally:
-            self.process_read_events.terminate()
+            self.process_event_loop.terminate()
+            self.process_control_loop.terminate()
             GPIO.cleanup()
             sys.exit(errcode)
 
