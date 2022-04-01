@@ -8,20 +8,18 @@ from multiprocessing import Process
 import threading
 from evdev import InputDevice, categorize, ecodes, list_devices,util
 import json
-import serial
-import serial.tools.list_ports
 import traceback
-import RPI.GPIO as GPIO
+import RPi.GPIO as GPIO
 import numpy as np
 
 class tank_controller:
-    PIN_LEFT_MOTOR_PWM = 25
-    PIN_RIGHT_MOTOR_PWM = 26
+    PIN_LEFT_MOTOR_PWM = 33
+    PIN_RIGHT_MOTOR_PWM = 31
 
-    PIN_LEFT_MOTOR_A = 14
-    PIN_LEFT_MOTOR_B = 12
-    PIN_RIGHT_MOTOR_A = 33
-    PIN_RIGHT_MOTOR_B = 32
+    PIN_LEFT_MOTOR_A = 37
+    PIN_LEFT_MOTOR_B = 35
+    PIN_RIGHT_MOTOR_A = 38
+    PIN_RIGHT_MOTOR_B = 36
 
     PWM_CHANNEL_MOTOR_LEFT = 0 
     PWM_CHANNEL_MOTOR_RIGHT = 1 
@@ -38,11 +36,16 @@ class tank_controller:
     DELAY_RESTART_EVENT_LOOP=3
     DELAY_CONTROL_LOOP=0.05
 
+    control_loop_alive=True
+    event_loop_alive=True
+
+    control_loop_alive_lock = threading.Lock()
+    event_loop_alive_lock = threading.Lock()
     motion_state_lock = threading.Lock()
 
     motion_state = {
-        "l":0,
-        "r":0
+        "left":0,
+        "right":0
     }
 
     def __init__(self,xbox_name):
@@ -58,18 +61,20 @@ class tank_controller:
             GPIO.setup(self.PIN_LEFT_MOTOR_B, GPIO.OUT)
             GPIO.setup(self.PIN_RIGHT_MOTOR_A, GPIO.OUT)
             GPIO.setup(self.PIN_RIGHT_MOTOR_B, GPIO.OUT)
-            
-            set_left_motor_stationary()
-            set_right_motor_stationary()
+            GPIO.setup(self.PIN_LEFT_MOTOR_PWM, GPIO.OUT)
+            GPIO.setup(self.PIN_RIGHT_MOTOR_PWM, GPIO.OUT)
+
+            self.set_left_motor_stationary()
+            self.set_right_motor_stationary()
 
             self.pwm_left=GPIO.PWM(self.PIN_LEFT_MOTOR_PWM, self.PWM_FREQUENCY)
             self.pwm_left.start(0)
             self.pwm_right=GPIO.PWM(self.PIN_RIGHT_MOTOR_PWM, self.PWM_FREQUENCY)
             self.pwm_right.start(0)
 
-            self.process_event_loop = Process(target=self.collect_events, name="tank_control_event_loop")
+            self.process_event_loop = threading.Thread(target=self.event_loop)
             self.process_event_loop.start()
-            self.process_control_loop = Process(target=self.control_loop, name="tank_control_loop")
+            self.process_control_loop = threading.Thread(target=self.control_loop)
             self.process_control_loop.start()
             self.process_control_loop.join()
             self.process_event_loop.join()
@@ -79,26 +84,40 @@ class tank_controller:
             print_ex(ex)
             errcode=1
         finally:
-            self.process_event_loop.terminate()
-            self.process_control_loop.terminate()
+            with self.control_loop_alive_lock:
+                self.control_loop_alive=False
+
+            with self.event_loop_alive_lock:            
+                self.event_loop_alive=False
+            
             GPIO.cleanup()
             sys.exit(errcode)
 
     def control_loop(self):
-        while True:
+        def control_loop_alive():
+            with self.control_loop_alive_lock:
+                return self.control_loop_alive
+
+        while control_loop_alive():
             try:
-                left=self.motion_state["left"]
-                right=self.motion_state["right"]
+                left=0
+                right=0
+
+                with self.motion_state_lock:
+                    print(self.motion_state)
+                    left=self.motion_state["left"]
+                    right=self.motion_state["right"]
+                
                 abs_left=abs(left)
                 abs_right=abs(right)
 
-                set_left_motor_stationary()
-                set_right_motor_stationary()
+                self.set_left_motor_stationary()
+                self.set_right_motor_stationary()
 
                 if abs_left<self.MIN_GAS and abs_right<self.MIN_GAS: 
-                    set_left_motor_stationary()
-                    set_right_motor_stationary()
-                else if abs_left<self.MIN_GAS or abs_right<self.MIN_GAS: 
+                    self.set_left_motor_stationary()
+                    self.set_right_motor_stationary()
+                elif abs_left<self.MIN_GAS or abs_right<self.MIN_GAS: 
                     max_gas=max(abs_left,abs_right)
 
                     if max_gas==abs_left:
@@ -106,48 +125,56 @@ class tank_controller:
                         abs_right=abs_left
 
                         if direction>0: 
-                            set_left_motor_clockwise()
-                            set_right_motor_counter_clockwise()
+                            self.set_left_motor_clockwise()
+                            self.set_right_motor_counter_clockwise()
                         else:
-                            set_left_motor_counter_clockwise()
-                            set_right_motor_clockwise()
+                            self.set_left_motor_counter_clockwise()
+                            self.set_right_motor_clockwise()
                     else:
                         direction=np.sign(right)
                         abs_left=abs_right
 
                         if direction>0:
-                            set_left_motor_counter_clockwise()
-                            set_right_motor_clockwise()
+                            self.set_left_motor_counter_clockwise()
+                            self.set_right_motor_clockwise()
                         
                         else: 
-                            set_left_motor_clockwise()
-                            set_right_motor_counter_clockwise()
+                            self.set_left_motor_clockwise()
+                            self.set_right_motor_counter_clockwise()
                 else:
                     if(left>0):
-                        set_left_motor_counter_clockwise()
+                        self.set_left_motor_counter_clockwise()
                     else:
-                        set_left_motor_clockwise()
+                        self.set_left_motor_clockwise()
                     
                     if(right>0):
-                        set_right_motor_counter_clockwise()                      
+                        self.set_right_motor_counter_clockwise()                      
                     else:
-                        set_right_motor_clockwise()
+                        self.set_right_motor_clockwise()
           
                 self.pwm_left.ChangeDutyCycle(abs_left)
                 self.pwm_right.ChangeDutyCycle(abs_right)
-                sleep(self.DELAY_CONTROL_LOOP)
+                # print("abs_right "+str(abs_right))
+                # print("abs_left "+str(abs_left))
+                time.sleep(self.DELAY_CONTROL_LOOP)
             except Exception as ex:
                 print_ex(ex)
                 time.sleep(self.DELAY_RESTART_CONTROL_LOOP)
 
     def event_loop(self):
-        while True:
+        def event_loop_alive():
+            with self.event_loop_alive_lock:
+                return self.event_loop_alive
+
+        while event_loop_alive():
+            gamepad=None
+
             try:
                 devices = [InputDevice(path) for path in list_devices()]
                 device = next((x for x in devices if x.name==self.xbox_name), None)
 
                 if device is None:
-                    time.sleep(self.DELAY_RESTART_COLLECT)
+                    time.sleep(self.DELAY_RESTART_EVENT_LOOP)
                     continue
 
                 capabilities=device.capabilities(verbose=True)
@@ -164,8 +191,10 @@ class tank_controller:
                     abs_gas_max=abs_info_gas[1].max
                     abs_brake_max=abs_info_brake[1].max
 
-                    for event in gamepad.read_loop():
-                        if event.type == ecodes.EV_ABS:
+                    while event_loop_alive():
+                        event = gamepad.read_one()
+
+                        if event is not None and event.type == ecodes.EV_ABS:
                             if event.code == self.BTN_GAS:
                                 normalized_gas=event.value/abs_gas_max
                                 
@@ -176,36 +205,38 @@ class tank_controller:
                                 
                                 with self.motion_state_lock:
                                     self.motion_state["left"]=normalized_brake
-
-                            print(self.motion_state)
-
             except Exception as ex:
                 print_ex(ex)
-                time.sleep(self.DELAY_RESTART_EVENT_LOOP)
+            finally:
+                if gamepad is not None:
+                    gamepad.close()
+
+                if event_loop_alive():
+                    time.sleep(self.DELAY_RESTART_EVENT_LOOP)
 
     def set_left_motor_stationary(self):
-        GPIO.output(PIN_LEFT_MOTOR_A, GPIO.LOW)
-        GPIO.output(PIN_LEFT_MOTOR_B, GPIO.LOW)
+        GPIO.output(self.PIN_LEFT_MOTOR_A, GPIO.LOW)
+        GPIO.output(self.PIN_LEFT_MOTOR_B, GPIO.LOW)
 
     def set_left_motor_clockwise(self): 
-        GPIO.output(PIN_LEFT_MOTOR_A, GPIO.LOW)
-        GPIO.output(PIN_LEFT_MOTOR_B, GPIO.HIGH)
+        GPIO.output(self.PIN_LEFT_MOTOR_A, GPIO.LOW)
+        GPIO.output(self.PIN_LEFT_MOTOR_B, GPIO.HIGH)
 
     def set_left_motor_counter_clockwise(self): 
-        GPIO.output(PIN_LEFT_MOTOR_A, GPIO.HIGH)
-        GPIO.output(PIN_LEFT_MOTOR_B, GPIO.LOW)
+        GPIO.output(self.PIN_LEFT_MOTOR_A, GPIO.HIGH)
+        GPIO.output(self.PIN_LEFT_MOTOR_B, GPIO.LOW)
 
     def set_right_motor_stationary(self): 
-        GPIO.output(PIN_RIGHT_MOTOR_A, GPIO.LOW)
-        GPIO.output(PIN_RIGHT_MOTOR_B, GPIO.LOW)
+        GPIO.output(self.PIN_RIGHT_MOTOR_A, GPIO.LOW)
+        GPIO.output(self.PIN_RIGHT_MOTOR_B, GPIO.LOW)
 
     def set_right_motor_clockwise(self):
-        GPIO.output(PIN_RIGHT_MOTOR_A, GPIO.LOW)
-        GPIO.output(PIN_RIGHT_MOTOR_B, GPIO.HIGH)
+        GPIO.output(self.PIN_RIGHT_MOTOR_A, GPIO.LOW)
+        GPIO.output(self.PIN_RIGHT_MOTOR_B, GPIO.HIGH)
 
     def set_right_motor_counter_clockwise(self):
-        GPIO.output(PIN_RIGHT_MOTOR_A, GPIO.HIGH)
-        GPIO.output(PIN_RIGHT_MOTOR_B, GPIO.LOW)
+        GPIO.output(self.PIN_RIGHT_MOTOR_A, GPIO.HIGH)
+        GPIO.output(self.PIN_RIGHT_MOTOR_B, GPIO.LOW)
 
 
 def print_ex(ex):
@@ -217,9 +248,11 @@ def display_usage():
 if __name__ == "__main__":
     argc=len(sys.argv)
 
-    if argc < 1: 
+    if argc < 2: 
         display_usage()
         sys.exit(1)
 
-    controller=tank_controller(xbox_name)
+    controller_name=sys.argv[1]
+    print(controller_name)
+    controller=tank_controller(controller_name)
     controller.start()
